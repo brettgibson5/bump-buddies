@@ -25,12 +25,10 @@ export const PHYSICS = {
   DELTA_MS: 1000 / 60,
   /** Ball is considered "stopped" when speed < this (px/s) */
   REST_SPEED_THRESHOLD: 0.8,
-  /** Number of consecutive ticks at rest before declaring ball stopped */
-  REST_TICKS_REQUIRED: 30,
-  /** Maximum power multiplier (pixels per second) applied to throw force */
-  MAX_THROW_FORCE: 22,
-  /** Minimum power multiplier */
-  MIN_THROW_FORCE: 4,
+  /** Number of consecutive ticks at rest before declaring all balls stopped */
+  REST_TICKS_REQUIRED: 20,
+  /** Cap on flick velocity in arena px/step passed to Matter.js setVelocity */
+  MAX_FLICK_VELOCITY: 28,
   /** Gravity scale — low, almost top-down friction feel */
   GRAVITY_SCALE: 0.0,
 } as const;

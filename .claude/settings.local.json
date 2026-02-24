@@ -4,7 +4,10 @@
       "Bash(npm install:*)",
       "Bash(pnpm:*)",
       "Bash(node -e:*)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(cmd /c \"taskkill /PID 17932 /F\")",
+      "Bash(powershell -Command \"Stop-Process -Id 17932 -Force; Write-Host ''Done''\")",
+      "Bash(powershell -Command \"netstat -ano | Select-String '':2567''\")"
     ]
   }
 }

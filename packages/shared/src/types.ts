@@ -21,12 +21,12 @@ export const BALL_PHYSICS: Record<BallSize, BallPhysicsConstants> = {
     friction: 0.02,
   },
   medium: {
-    radius: 28,
-    mass: 1.2,
-    frictionAir: 0.055,
-    restitution: 0.4,
-    frictionStatic: 0.07,
-    friction: 0.04,
+    radius: 22,
+    mass: 1.0,
+    frictionAir: 0.012,
+    restitution: 0.65,
+    frictionStatic: 0.02,
+    friction: 0.01,
   },
   large: {
     radius: 40,
@@ -54,11 +54,10 @@ export type PlayerSide = "left" | "right";
 // ─── Messages (client → server) ───────────────────────────────────────────────
 
 export interface ThrowPayload {
-  size: BallSize;
-  /** Radians, 0 = rightward, positive = clockwise */
-  angle: number;
-  /** 0–1 normalised power */
-  power: number;
+  /** Arena px per Matter.js step, rightward positive */
+  vx: number;
+  /** Arena px per Matter.js step, downward positive */
+  vy: number;
 }
 
 export interface SelectBallPayload {

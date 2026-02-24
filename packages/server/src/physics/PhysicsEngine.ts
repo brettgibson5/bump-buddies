@@ -2,7 +2,7 @@ import Matter from "matter-js";
 import { ARENA, PHYSICS, BALL_PHYSICS } from "@pinbuddys/shared";
 import type { BallSize, ThrowPayload } from "@pinbuddys/shared";
 
-const { Engine, World, Bodies, Body, Events } = Matter;
+const { Engine, World, Bodies, Body } = Matter;
 
 export interface BallSnapshot {
   id: string;
@@ -12,17 +12,10 @@ export interface BallSnapshot {
   velY: number;
 }
 
-export interface ThrowResult {
-  /** Where the ball finally came to rest */
-  finalX: number;
-  finalY: number;
-  /**
-   * "scored"   — ball is fully on opponent's half and at rest
-   * "captured" — ball exited the far boundary
-   * "returned" — ball ended up back on thrower's own half
-   * "blocked"  — knocked back by a collision and went back
-   */
-  outcome: "scored" | "captured" | "returned" | "blocked";
+export interface BallCrossing {
+  ballId: string;
+  from: "left" | "right";
+  to: "left" | "right";
 }
 
 /**
@@ -35,6 +28,8 @@ export class PhysicsEngine {
   private world: Matter.World;
   /** Map from ball id → Matter body */
   private bodies = new Map<string, Matter.Body>();
+  /** Last known non-center half for each ball (used for crossing detection) */
+  private ballHalves = new Map<string, "left" | "right">();
 
   constructor() {
     this.engine = Engine.create({
@@ -63,8 +58,8 @@ export class PhysicsEngine {
 
   // ─── Ball management ───────────────────────────────────────────────────────
 
-  addBall(id: string, size: BallSize, x: number, y: number): void {
-    const consts = BALL_PHYSICS[size];
+  addBall(id: string, _size: BallSize, x: number, y: number): void {
+    const consts = BALL_PHYSICS["medium"];
     const body = Bodies.circle(x, y, consts.radius, {
       mass: consts.mass,
       frictionAir: consts.frictionAir,
@@ -74,6 +69,7 @@ export class PhysicsEngine {
       label: id,
     });
     this.bodies.set(id, body);
+    this.ballHalves.set(id, x < ARENA.CENTER_X ? "left" : "right");
     World.add(this.world, body);
   }
 
@@ -83,38 +79,29 @@ export class PhysicsEngine {
       World.remove(this.world, body);
       this.bodies.delete(id);
     }
+    this.ballHalves.delete(id);
   }
 
   /**
-   * Apply a throw impulse to an existing ball body.
-   * `payload.angle` is in radians (0 = right, positive = clockwise).
-   * `payload.power` is 0–1 normalised.
+   * Apply a flick impulse to an existing ball body.
+   * `payload.vx` and `payload.vy` are arena px per Matter.js step.
    */
   applyThrow(ballId: string, payload: ThrowPayload): void {
     const body = this.bodies.get(ballId);
     if (!body) return;
-
-    const consts = BALL_PHYSICS[payload.size];
-    const forceMag =
-      (PHYSICS.MIN_THROW_FORCE +
-        payload.power * (PHYSICS.MAX_THROW_FORCE - PHYSICS.MIN_THROW_FORCE)) *
-      consts.mass;
-
-    Body.setVelocity(body, {
-      x: Math.cos(payload.angle) * forceMag,
-      y: Math.sin(payload.angle) * forceMag,
-    });
+    Body.setVelocity(body, { x: payload.vx, y: payload.vy });
   }
 
   // ─── Simulation ────────────────────────────────────────────────────────────
 
   /**
    * Advance the simulation by one tick (1/60 s).
-   * Returns current snapshots of all tracked balls.
+   * Returns snapshots of all tracked balls plus any center-line crossings.
    */
-  step(): BallSnapshot[] {
+  step(): { snapshots: BallSnapshot[]; crossings: BallCrossing[] } {
     Engine.update(this.engine, PHYSICS.DELTA_MS);
-    return this.snapshots();
+    const crossings = this.detectCrossings();
+    return { snapshots: this.snapshots(), crossings };
   }
 
   snapshots(): BallSnapshot[] {
@@ -131,11 +118,47 @@ export class PhysicsEngine {
     return result;
   }
 
+  /**
+   * Detect which balls crossed the center line this tick.
+   * Uses hysteresis: only updates registered side when ball is outside the
+   * SCORE_BUFFER zone, preventing rapid oscillation near center.
+   */
+  private detectCrossings(): BallCrossing[] {
+    const crossings: BallCrossing[] = [];
+    for (const [id, body] of this.bodies) {
+      const x = body.position.x;
+      let currSide: "left" | "right" | "center";
+      if (x < ARENA.CENTER_X - ARENA.SCORE_BUFFER) currSide = "left";
+      else if (x > ARENA.CENTER_X + ARENA.SCORE_BUFFER) currSide = "right";
+      else currSide = "center";
+
+      if (currSide !== "center") {
+        const lastSide = this.ballHalves.get(id);
+        if (lastSide && lastSide !== currSide) {
+          crossings.push({ ballId: id, from: lastSide, to: currSide });
+        }
+        this.ballHalves.set(id, currSide);
+      }
+      // If in center buffer zone: keep last known side, no crossing registered
+    }
+    return crossings;
+  }
+
   isBallAtRest(id: string): boolean {
     const body = this.bodies.get(id);
     if (!body) return true;
     const speed = Math.hypot(body.velocity.x, body.velocity.y);
     return speed < PHYSICS.REST_SPEED_THRESHOLD;
+  }
+
+  /** Returns true when every tracked ball is below the rest speed threshold. */
+  areAllBallsAtRest(): boolean {
+    for (const body of this.bodies.values()) {
+      if (Math.hypot(body.velocity.x, body.velocity.y) >= PHYSICS.REST_SPEED_THRESHOLD) {
+        return false;
+      }
+    }
+    return true;
   }
 
   getBallPosition(id: string): { x: number; y: number } | null {
@@ -165,6 +188,7 @@ export class PhysicsEngine {
     World.clear(this.world, false);
     Engine.clear(this.engine);
     this.bodies.clear();
+    this.ballHalves.clear();
     this.buildArena();
   }
 }

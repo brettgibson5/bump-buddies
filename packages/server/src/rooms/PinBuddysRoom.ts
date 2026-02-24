@@ -3,6 +3,7 @@ import { GameState } from "../schema/GameState";
 import { PlayerState } from "../schema/PlayerState";
 import { BallState } from "../schema/BallState";
 import { PhysicsEngine } from "../physics/PhysicsEngine";
+import type { BallCrossing } from "../physics/PhysicsEngine";
 import { ARENA, PHYSICS, RULES } from "@pinbuddys/shared";
 import type {
   ThrowPayload,
@@ -13,15 +14,12 @@ import type {
 } from "@pinbuddys/shared";
 import { saveMatchResult } from "../firebase/firebaseAdmin";
 
-type BallSizeSelection = BallSize | null;
-
 export class PinBuddysRoom extends Room<GameState> {
   maxClients = 2;
 
   private physics!: PhysicsEngine;
   private simInterval: NodeJS.Timer | null = null;
   private restTicks = 0;
-  private selectedBalls = new Map<string, BallSizeSelection>();
   private turnBallId: string | null = null;
   private turnTimeout: NodeJS.Timeout | null = null;
 
@@ -34,9 +32,9 @@ export class PinBuddysRoom extends Room<GameState> {
     this.onMessage<ThrowPayload>("throw", (client, payload) =>
       this.handleThrow(client, payload),
     );
-    this.onMessage<SelectBallPayload>("selectBall", (client, payload) =>
-      this.handleSelectBall(client, payload),
-    );
+    this.onMessage<SelectBallPayload>("selectBall", (_client, _payload) => {
+      // Ball size selection removed — single standard ball
+    });
 
     console.log(`[PinBuddysRoom] Created room ${this.roomId}`);
   }
@@ -55,7 +53,6 @@ export class PinBuddysRoom extends Room<GameState> {
     player.connected = true;
 
     this.state.players.set(client.sessionId, player);
-    this.selectedBalls.set(client.sessionId, null);
 
     console.log(
       `[PinBuddysRoom] ${player.displayName} joined (side: ${player.side})`,
@@ -87,7 +84,6 @@ export class PinBuddysRoom extends Room<GameState> {
   // ─── Game Flow ─────────────────────────────────────────────────────────────
 
   private startGame(): void {
-    // Determine who goes first (left player always starts)
     const [p1Id] = [...this.state.players.keys()];
     this.state.currentPlayerId = p1Id;
     this.setPhase("p1Turn");
@@ -101,20 +97,13 @@ export class PinBuddysRoom extends Room<GameState> {
 
   // ─── Message Handlers ──────────────────────────────────────────────────────
 
-  private handleSelectBall(client: Client, payload: SelectBallPayload): void {
-    if (client.sessionId !== this.state.currentPlayerId) return;
-    if (!["p1Turn", "p2Turn", "bonusTurn"].includes(this.state.phase)) return;
-    this.selectedBalls.set(client.sessionId, payload.size);
-  }
-
   private handleThrow(client: Client, payload: ThrowPayload): void {
     if (client.sessionId !== this.state.currentPlayerId) return;
     if (!["p1Turn", "p2Turn", "bonusTurn"].includes(this.state.phase)) return;
 
     this.clearTurnTimeout();
 
-    // If no ball size selected yet, use the one in the payload
-    const size: BallSize = payload.size;
+    const size: BallSize = "medium";
 
     // Create a new ball in state + physics
     const ballId = `ball_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
@@ -136,7 +125,7 @@ export class PinBuddysRoom extends Room<GameState> {
     // Add to physics engine
     this.physics.addBall(ballId, size, startX, startY);
 
-    // Apply force
+    // Apply flick velocity
     this.physics.applyThrow(ballId, payload);
 
     this.turnBallId = ballId;
@@ -164,9 +153,9 @@ export class PinBuddysRoom extends Room<GameState> {
   }
 
   private simulationTick(): void {
-    const snapshots = this.physics.step();
+    const { snapshots, crossings } = this.physics.step();
 
-    // Sync positions to Colyseus state (only active balls)
+    // Sync positions to Colyseus state (active balls only)
     for (const snap of snapshots) {
       const ballState = this.state.balls.find(
         (b: BallState) => b.id === snap.id,
@@ -179,9 +168,15 @@ export class PinBuddysRoom extends Room<GameState> {
       }
     }
 
+    // Running tally: process center-line crossings immediately
+    for (const crossing of crossings) {
+      this.processCrossing(crossing);
+      if (this.state.phase === "gameOver") return;
+    }
+
     if (!this.turnBallId) return;
 
-    // Check for out-of-bounds first
+    // Check for out-of-bounds on the turn ball
     const oob = this.physics.isBallOutOfBounds(this.turnBallId);
     if (oob.oob) {
       this.stopSimulation();
@@ -189,13 +184,12 @@ export class PinBuddysRoom extends Room<GameState> {
       return;
     }
 
-    // Check for rest
-    if (this.physics.isBallAtRest(this.turnBallId)) {
+    // Wait for ALL balls to come to rest before ending the turn
+    if (this.physics.areAllBallsAtRest()) {
       this.restTicks++;
       if (this.restTicks >= PHYSICS.REST_TICKS_REQUIRED) {
         this.stopSimulation();
-        this.evaluateScoringBall();
-        return;
+        this.finalizeRound();
       }
     } else {
       this.restTicks = 0;
@@ -204,24 +198,46 @@ export class PinBuddysRoom extends Room<GameState> {
 
   // ─── Round Evaluation ──────────────────────────────────────────────────────
 
-  private evaluateScoringBall(): void {
-    this.setPhase("roundEval");
-    if (!this.turnBallId) return;
+  /** Ball crossed the center line — update running tally immediately. */
+  private processCrossing(crossing: BallCrossing): void {
+    const ballState = this.state.balls.find(
+      (b: BallState) => b.id === crossing.ballId && b.isActive,
+    );
+    if (!ballState) return;
 
-    const throwerId = this.state.currentPlayerId;
-    const throwerSide = this.state.players.get(throwerId)!.side;
-    const opponentSide: "left" | "right" =
-      throwerSide === "left" ? "right" : "left";
+    const playerList = [...this.state.players.keys()];
+    const isP1 = playerList[0] === ballState.ownerId;
+    const ownerSide = this.state.players.get(ballState.ownerId)?.side;
+    const crossedToOpponent = crossing.to !== ownerSide;
+    const delta = crossedToOpponent ? 1 : -1;
 
-    const ballHalf = this.physics.getBallHalf(this.turnBallId);
-
-    if (ballHalf === opponentSide) {
-      // SCORED
-      this.awardPoint(throwerId);
+    if (isP1) {
+      this.state.p1Score = Math.max(0, this.state.p1Score + delta);
     } else {
-      // Did not score — advance turn
-      this.advanceTurn();
+      this.state.p2Score = Math.max(0, this.state.p2Score + delta);
     }
+
+    this.broadcast("scored", {
+      type: "scored",
+      scorerId: ballState.ownerId,
+      newScore: { p1: this.state.p1Score, p2: this.state.p2Score },
+    });
+
+    if (
+      this.state.p1Score >= RULES.WIN_SCORE ||
+      this.state.p2Score >= RULES.WIN_SCORE
+    ) {
+      this.stopSimulation();
+      const winnerId =
+        this.state.p1Score >= RULES.WIN_SCORE ? playerList[0] : playerList[1];
+      this.endGame(winnerId);
+    }
+  }
+
+  /** All balls at rest — ball stays on field, just advance turn. */
+  private finalizeRound(): void {
+    this.turnBallId = null;
+    this.advanceTurn();
   }
 
   private evaluateCapturedBall(): void {
@@ -231,7 +247,7 @@ export class PinBuddysRoom extends Room<GameState> {
     const throwerId = this.state.currentPlayerId;
     const opponentId = this.getOpponentId(throwerId);
 
-    // Mark the ball as captured by opponent
+    // Mark the ball as captured by opponent and remove from physics
     const ballState = this.state.balls.find(
       (b: BallState) => b.id === this.turnBallId,
     );
@@ -240,7 +256,6 @@ export class PinBuddysRoom extends Room<GameState> {
       ballState.heldBy = opponentId;
     }
 
-    // Remove from physics
     this.physics.removeBall(this.turnBallId!);
     this.turnBallId = null;
 
@@ -262,56 +277,13 @@ export class PinBuddysRoom extends Room<GameState> {
     this.startTurnTimeout();
   }
 
-  private awardPoint(scorerId: string): void {
-    const playerList = [...this.state.players.keys()];
-    const isP1 = playerList[0] === scorerId;
-    if (isP1) {
-      this.state.p1Score++;
-    } else {
-      this.state.p2Score++;
-    }
-
-    const newScore = { p1: this.state.p1Score, p2: this.state.p2Score };
-    this.broadcast("scored", { type: "scored", scorerId, newScore });
-
-    // Cleanup ball
-    const ballState = this.state.balls.find(
-      (b: BallState) => b.id === this.turnBallId,
-    );
-    if (ballState) {
-      ballState.isActive = false;
-    }
-    if (this.turnBallId) {
-      this.physics.removeBall(this.turnBallId);
-      this.turnBallId = null;
-    }
-
-    if (
-      this.state.p1Score >= RULES.WIN_SCORE ||
-      this.state.p2Score >= RULES.WIN_SCORE
-    ) {
-      this.endGame(scorerId);
-    } else {
-      this.advanceTurn();
-    }
-  }
-
   private advanceTurn(): void {
     this.state.bonusBallHolderId = "";
 
     const throwerId = this.state.currentPlayerId;
     const opponentId = this.getOpponentId(throwerId);
 
-    // Cleanup current ball if it's still tracked
-    if (this.turnBallId) {
-      const ballState = this.state.balls.find(
-        (b: BallState) => b.id === this.turnBallId,
-      );
-      if (ballState) ballState.isActive = false;
-      this.physics.removeBall(this.turnBallId);
-      this.turnBallId = null;
-    }
-
+    // Balls persist on the field — no cleanup here
     this.state.currentPlayerId = opponentId;
     const playerList = [...this.state.players.keys()];
     const isOpponentP1 = playerList[0] === opponentId;
