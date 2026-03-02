@@ -1,5 +1,5 @@
 {
   "installCommand": "pnpm install",
-  "buildCommand": "pnpm --filter @pinbuddys/client build",
+  "buildCommand": "cd packages/client && npx vite build",
   "outputDirectory": "packages/client/dist"
 }
