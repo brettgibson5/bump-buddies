@@ -27,6 +27,7 @@ const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
   width,
   height,
+  resolution: window.devicePixelRatio || 1,
   parent: "game-container",
   backgroundColor: "#1a1a2e",
   physics: {

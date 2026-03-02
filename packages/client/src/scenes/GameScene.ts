@@ -5,14 +5,11 @@ import { colyseusService } from "../network/ColyseusClient";
 import { ARENA, PHYSICS, BALL_PHYSICS, RULES } from "@pinbuddys/shared";
 import type {
   GamePhase,
-  ServerEvent,
   ThrowPayload,
 } from "@pinbuddys/shared";
 
 // Matter.js (browser build) — used for LOCAL mode physics only
 import Matter from "matter-js";
-
-const SLINGSHOT_HIT_RADIUS = 60; // px — pointer must start within this of the preview ball
 
 interface SceneData {
   mode: "online" | "local";
@@ -21,7 +18,7 @@ interface SceneData {
 
 type AimState =
   | { active: false }
-  | { active: true; spawnX: number; spawnY: number };
+  | { active: true; currentX: number; currentY: number };
 
 /** Colyseus ball state shape we care about */
 interface RemoteBallState {
@@ -39,7 +36,6 @@ export class GameScene extends Phaser.Scene {
   private arena!: Arena;
   private sceneW = 0;
   private sceneH = 0;
-  // Scale factors arena-units → pixels
   private sx = 1;
   private sy = 1;
 
@@ -49,20 +45,21 @@ export class GameScene extends Phaser.Scene {
   private myPlayerSide: "left" | "right" = "left";
 
   // ─── Balls ─────────────────────────────────────────────────────────────────
-  /** Map from ball id → Ball display object */
   private ballObjects = new Map<string, Ball>();
 
   // ─── Aiming / Flick ────────────────────────────────────────────────────────
   private aimState: AimState = { active: false };
   private aimGraphics!: Phaser.GameObjects.Graphics;
   private previewBall: Phaser.GameObjects.Arc | null = null;
-  /** Recent pointer positions for flick velocity calculation */
   private flickHistory: Array<{ x: number; y: number; t: number }> = [];
 
   // ─── UI refs ───────────────────────────────────────────────────────────────
   private p1ScoreText!: Phaser.GameObjects.Text;
   private p2ScoreText!: Phaser.GameObjects.Text;
-  private turnBannerText!: Phaser.GameObjects.Text;
+  private rosterGraphics!: Phaser.GameObjects.Graphics;
+  private turnIndicatorGraphics!: Phaser.GameObjects.Graphics;
+  private p1TurnText!: Phaser.GameObjects.Text;
+  private p2TurnText!: Phaser.GameObjects.Text;
 
   // ─── Local mode state ──────────────────────────────────────────────────────
   private localPhase: GamePhase = "p1Turn";
@@ -74,10 +71,13 @@ export class GameScene extends Phaser.Scene {
   private localRestTicks = 0;
   private localTurnBallId: string | null = null;
   private passScreen!: Phaser.GameObjects.Container;
-  /** Tracks which player owns each local ball (1 or 2) */
+
+  // Roster — balls available to throw
+  private localP1Roster: number = ARENA.INITIAL_ROSTER_SIZE;
+  private localP2Roster: number = ARENA.INITIAL_ROSTER_SIZE;
+
+  // Ball owner tracking (for scoring and endzone capture)
   private localBallOwners = new Map<string, 1 | 2>();
-  /** Last known non-center half for each local ball (crossing detection) */
-  private localBallHalves = new Map<string, "left" | "right">();
 
   constructor() {
     super({ key: "GameScene" });
@@ -99,7 +99,7 @@ export class GameScene extends Phaser.Scene {
     this.aimGraphics = this.add.graphics();
 
     this.buildScoreUI();
-    this.buildTurnBanner();
+    this.buildRosterUI();
     this.setupInput();
 
     if (this.isLocal) {
@@ -110,12 +110,9 @@ export class GameScene extends Phaser.Scene {
   }
 
   update(): void {
-    // Advance local physics
     if (this.isLocal && this.localPhase === "simulating") {
       this.localStep();
     }
-
-    // Interpolate all ball positions
     for (const ball of this.ballObjects.values()) {
       ball.preUpdate();
     }
@@ -124,62 +121,179 @@ export class GameScene extends Phaser.Scene {
   // ─── UI Building ───────────────────────────────────────────────────────────
 
   private buildScoreUI(): void {
-    const pad = 16;
+    // Score numbers sit at the bottom, just inside each player's endzone boundary line
+    const circleY = this.sceneH - 30;
+    const offset = 8;
+
     this.p1ScoreText = this.add
-      .text(pad, pad, "P1: 0", {
-        fontSize: "22px",
+      .text(ARENA.LEFT_ENDZONE_END * this.sx - offset, circleY, "0", {
+        fontSize: "20px",
         color: "#4cc9f0",
         fontFamily: "Arial Black",
+        stroke: "#000000",
+        strokeThickness: 2,
       })
-      .setDepth(10);
+      .setOrigin(1, 0.5)
+      .setDepth(8);
 
     this.p2ScoreText = this.add
-      .text(this.sceneW - pad, pad, "P2: 0", {
-        fontSize: "22px",
+      .text(ARENA.RIGHT_ENDZONE_START * this.sx + offset, circleY, "0", {
+        fontSize: "20px",
         color: "#f72585",
         fontFamily: "Arial Black",
+        stroke: "#000000",
+        strokeThickness: 2,
       })
-      .setOrigin(1, 0)
-      .setDepth(10);
+      .setOrigin(0, 0.5)
+      .setDepth(8);
   }
 
-  private buildTurnBanner(): void {
-    this.turnBannerText = this.add
-      .text(this.sceneW / 2, 18, "", {
-        fontSize: "16px",
-        color: "#ffffff",
+  private buildRosterUI(): void {
+    const textY = this.sceneH - 58;
+
+    // "Blue's Turn" / "Red's Turn" labels — pill-bordered
+    this.p1TurnText = this.add
+      .text(16, textY, "Blue's Turn", {
+        fontSize: "12px",
+        color: "#4cc9f0",
         fontFamily: "Arial",
-        backgroundColor: "#00000066",
-        padding: { x: 10, y: 4 },
+        fontStyle: "bold",
       })
-      .setOrigin(0.5, 0)
-      .setDepth(10);
+      .setDepth(11)
+      .setOrigin(0, 0.5);
+
+    this.p2TurnText = this.add
+      .text(this.sceneW - 16, textY, "Red's Turn", {
+        fontSize: "12px",
+        color: "#f72585",
+        fontFamily: "Arial",
+        fontStyle: "bold",
+      })
+      .setDepth(11)
+      .setOrigin(1, 0.5);
+
+    this.turnIndicatorGraphics = this.add.graphics().setDepth(10);
+    this.rosterGraphics = this.add.graphics().setDepth(10);
+    this.redrawRosterUI();
+  }
+
+  private redrawRosterUI(): void {
+    const g = this.rosterGraphics;
+    g.clear();
+
+    const r = 8;
+    const gap = 5;
+    const padX = 14;
+    const circleY = this.sceneH - 30;
+    const maxBalls = 8;
+
+    // P1 — bottom left, cyan
+    for (let i = 0; i < maxBalls; i++) {
+      const cx = padX + i * (r * 2 + gap) + r;
+      const filled = i < this.localP1Roster;
+      g.lineStyle(2, 0x4cc9f0, filled ? 1 : 0.3);
+      g.fillStyle(0x4cc9f0, filled ? 0.85 : 0.1);
+      g.fillCircle(cx, circleY, r);
+      g.strokeCircle(cx, circleY, r);
+    }
+
+    // P2 — bottom right, magenta
+    for (let i = 0; i < maxBalls; i++) {
+      const cx = this.sceneW - padX - i * (r * 2 + gap) - r;
+      const filled = i < this.localP2Roster;
+      g.lineStyle(2, 0xf72585, filled ? 1 : 0.3);
+      g.fillStyle(0xf72585, filled ? 0.85 : 0.1);
+      g.fillCircle(cx, circleY, r);
+      g.strokeCircle(cx, circleY, r);
+    }
+
+    this.updateTurnIndicators();
+  }
+
+  private updateTurnIndicators(): void {
+    if (!this.p1TurnText || !this.p2TurnText || !this.turnIndicatorGraphics) return;
+
+    const isP1Turn = this.localCurrentPlayer === 1;
+    this.p1TurnText.setAlpha(isP1Turn ? 1 : 0.3);
+    this.p2TurnText.setAlpha(isP1Turn ? 0.3 : 1);
+
+    const g = this.turnIndicatorGraphics;
+    g.clear();
+
+    const drawPill = (
+      text: Phaser.GameObjects.Text,
+      color: number,
+      active: boolean,
+    ) => {
+      const b = text.getBounds();
+      const px = 8, py = 5;
+      const x = b.left - px;
+      const y = b.top - py;
+      const w = b.width + px * 2;
+      const h = b.height + py * 2;
+      g.fillStyle(color, active ? 0.18 : 0.04);
+      g.fillRoundedRect(x, y, w, h, h / 2);
+      g.lineStyle(1.5, color, active ? 0.9 : 0.25);
+      g.strokeRoundedRect(x, y, w, h, h / 2);
+    };
+
+    drawPill(this.p1TurnText, 0x4cc9f0, isP1Turn);
+    drawPill(this.p2TurnText, 0xf72585, !isP1Turn);
   }
 
   // ─── Input ─────────────────────────────────────────────────────────────────
 
+  private getEndzoneBounds(): { minX: number; maxX: number } {
+    const isLeft = this.isLocal
+      ? this.localCurrentPlayer === 1
+      : this.myPlayerSide === "left";
+    return isLeft
+      ? { minX: 0, maxX: ARENA.LEFT_ENDZONE_END * this.sx }
+      : { minX: ARENA.RIGHT_ENDZONE_START * this.sx, maxX: ARENA.WIDTH * this.sx };
+  }
+
   private setupInput(): void {
     this.input.on("pointerdown", (ptr: Phaser.Input.Pointer) => {
       if (!this.isMyTurn() || this.aimState.active) return;
-      const { x: spawnX, y: spawnY } = this.getSpawnPoint();
-      if (Math.hypot(ptr.x - spawnX, ptr.y - spawnY) > SLINGSHOT_HIT_RADIUS) return;
+
+      // Check pointer is within the player's endzone
+      const bounds = this.getEndzoneBounds();
+      if (ptr.x < bounds.minX || ptr.x > bounds.maxX) return;
+
+      // Check player has balls remaining
+      const hasRoster = this.isLocal
+        ? (this.localCurrentPlayer === 1 ? this.localP1Roster : this.localP2Roster) > 0
+        : true; // online mode: server tracks roster
+      if (!hasRoster) return;
+
       if (this.previewBall) {
         this.tweens.killTweensOf(this.previewBall);
         this.previewBall.setScale(1);
+        this.previewBall.setPosition(ptr.x, ptr.y);
+      } else {
+        this.showPreviewBallAt(ptr.x, ptr.y);
       }
+
       this.flickHistory = [{ x: ptr.x, y: ptr.y, t: Date.now() }];
-      this.aimState = { active: true, spawnX, spawnY };
+      this.aimState = { active: true, currentX: ptr.x, currentY: ptr.y };
     });
 
     this.input.on("pointermove", (ptr: Phaser.Input.Pointer) => {
       if (!this.aimState.active) return;
-      this.flickHistory.push({ x: ptr.x, y: ptr.y, t: Date.now() });
-      // Ghost ball follows the finger
-      if (this.previewBall) this.previewBall.setPosition(ptr.x, ptr.y);
+
+      // Clamp to endzone bounds + arena vertical bounds
+      const bounds = this.getEndzoneBounds();
+      const clampedX = Phaser.Math.Clamp(ptr.x, bounds.minX, bounds.maxX);
+      const clampedY = Phaser.Math.Clamp(ptr.y, 0, this.sceneH);
+
+      this.flickHistory.push({ x: clampedX, y: clampedY, t: Date.now() });
+      if (this.previewBall) this.previewBall.setPosition(clampedX, clampedY);
+      this.aimState = { active: true, currentX: clampedX, currentY: clampedY };
     });
 
     this.input.on("pointerup", (_ptr: Phaser.Input.Pointer) => {
       if (!this.aimState.active) return;
+      const { currentX, currentY } = this.aimState;
       this.aimState = { active: false };
       this.aimGraphics.clear();
       this.hidePreviewBall();
@@ -197,8 +311,7 @@ export class GameScene extends Phaser.Scene {
         return;
       }
 
-      const screenVx =
-        (recent[recent.length - 1].x - recent[0].x) / dt; // screen px/ms
+      const screenVx = (recent[recent.length - 1].x - recent[0].x) / dt;
       const screenVy = (recent[recent.length - 1].y - recent[0].y) / dt;
 
       // Convert to arena px/step (Matter.js velocity units)
@@ -207,32 +320,22 @@ export class GameScene extends Phaser.Scene {
 
       const speed = Math.hypot(vx, vy);
       if (speed < 0.5) {
-        // Flick too slow — ignore
         this.showPreviewBall();
         return;
       }
-      // Cap at max flick velocity
-      const scale = Math.min(1, PHYSICS.MAX_FLICK_VELOCITY / speed);
-      this.performThrow(vx * scale, vy * scale);
+      const capScale = Math.min(1, PHYSICS.MAX_FLICK_VELOCITY / speed);
+      this.performThrow(vx * capScale, vy * capScale, currentX, currentY);
     });
 
     this.input.on("pointerout", () => {
       if (!this.aimState.active) return;
       this.aimState = { active: false };
       this.aimGraphics.clear();
-      // Restore preview ball to spawn
+      // Restore preview ball to endzone center
       if (this.previewBall) {
-        const { x, y } = this.getSpawnPoint();
+        const { x, y } = this.getEndzoneCenterPoint();
         this.previewBall.setPosition(x, y).setScale(1);
-        this.tweens.add({
-          targets: this.previewBall,
-          scaleX: 1.15,
-          scaleY: 1.15,
-          duration: 600,
-          yoyo: true,
-          repeat: -1,
-          ease: "Sine.easeInOut",
-        });
+        this.startPreviewPulse();
       }
     });
   }
@@ -246,28 +349,43 @@ export class GameScene extends Phaser.Scene {
     return room.state.currentPlayerId === room.sessionId;
   }
 
-  private getSpawnPoint(): { x: number; y: number } {
+  /** Center of the current player's endzone in screen px. */
+  private getEndzoneCenterPoint(): { x: number; y: number } {
     const isLeft = this.isLocal
       ? this.localCurrentPlayer === 1
       : this.myPlayerSide === "left";
     return {
-      x: (isLeft ? ARENA.WIDTH * 0.25 : ARENA.WIDTH * 0.75) * this.sx,
+      x: (isLeft ? ARENA.LEFT_ENDZONE_END / 2 : (ARENA.RIGHT_ENDZONE_START + ARENA.WIDTH) / 2) * this.sx,
       y: ARENA.HEIGHT * 0.5 * this.sy,
     };
   }
 
   private showPreviewBall(): void {
     if (this.previewBall) return;
-    const { x, y } = this.getSpawnPoint();
-    const radius = BALL_PHYSICS["medium"].radius;
+    const { x, y } = this.getEndzoneCenterPoint();
+    this.showPreviewBallAt(x, y);
+    this.startPreviewPulse();
+  }
+
+  private showPreviewBallAt(x: number, y: number): void {
+    if (this.previewBall) {
+      this.previewBall.setPosition(x, y);
+      return;
+    }
+    const screenR = BALL_PHYSICS["medium"].radius * Math.min(this.sx, this.sy);
     const isLeft = this.isLocal
       ? this.localCurrentPlayer === 1
       : this.myPlayerSide === "left";
     const color = isLeft ? 0x4cc9f0 : 0xf72585;
     this.previewBall = this.add
-      .arc(x, y, radius, 0, 360, false, color, 0.55)
+      .arc(x, y, screenR, 0, 360, false, color, 0.55)
       .setStrokeStyle(2, 0xffffff, 0.9)
       .setDepth(5);
+  }
+
+  private startPreviewPulse(): void {
+    if (!this.previewBall) return;
+    this.tweens.killTweensOf(this.previewBall);
     this.tweens.add({
       targets: this.previewBall,
       scaleX: 1.15,
@@ -286,10 +404,10 @@ export class GameScene extends Phaser.Scene {
     this.previewBall = null;
   }
 
-  private performThrow(vx: number, vy: number): void {
+  private performThrow(vx: number, vy: number, startScreenX: number, startScreenY: number): void {
     const payload: ThrowPayload = { vx, vy };
     if (this.isLocal) {
-      this.localHandleThrow(payload);
+      this.localHandleThrow(payload, startScreenX, startScreenY);
     } else {
       colyseusService.sendThrow(payload);
     }
@@ -307,7 +425,6 @@ export class GameScene extends Phaser.Scene {
 
     this.mySessionId = room.sessionId;
 
-    // Listen to state changes
     room.state.onChange(() => {
       this.syncScoreUI(room.state.p1Score, room.state.p2Score);
       this.updateTurnBanner(room.state.currentPlayerId, room.state.phase);
@@ -324,7 +441,6 @@ export class GameScene extends Phaser.Scene {
       this.ballObjects.delete(ball.id);
     });
 
-    // Server events
     colyseusService.on("scored", (e) => {
       const side: "left" | "right" =
         e.scorerId === this.getLeftPlayerId(room) ? "right" : "left";
@@ -336,17 +452,14 @@ export class GameScene extends Phaser.Scene {
     colyseusService.on("bonusThrow", (e) => {
       if (e.playerId === this.mySessionId) this.showToast("Bonus throw!");
     });
-
     colyseusService.on("gameOver", (e) => {
       const won = e.winnerId === this.mySessionId;
       this.showGameOver(won, e.finalScore);
     });
-
     colyseusService.on("opponentDisconnected", () =>
       this.showToast("Opponent disconnected…"),
     );
 
-    // Determine our side
     const player = room.state.players.get(this.mySessionId);
     if (player) this.myPlayerSide = player.side as "left" | "right";
   }
@@ -364,6 +477,7 @@ export class GameScene extends Phaser.Scene {
     if (!ball.isActive) return;
     const owner = colyseusService.getRoom()?.state.players.get(ball.ownerId);
     const isLeft = owner?.side === "left";
+    const screenR = BALL_PHYSICS["medium"].radius * Math.min(this.sx, this.sy);
     const b = new Ball(
       this,
       ball.x * this.sx,
@@ -371,13 +485,13 @@ export class GameScene extends Phaser.Scene {
       "medium",
       ball.id,
       isLeft,
+      screenR,
     );
     this.ballObjects.set(ball.id, b);
   }
 
   private onBallChanged(ball: RemoteBallState): void {
     if (!ball.isActive) {
-      // Ball went OOB — play exit animation and remove
       const obj = this.ballObjects.get(ball.id);
       if (obj) {
         obj.playScoreAnimation();
@@ -392,23 +506,17 @@ export class GameScene extends Phaser.Scene {
   }
 
   private syncScoreUI(p1: number, p2: number): void {
-    this.p1ScoreText.setText(`P1: ${p1}`);
-    this.p2ScoreText.setText(`P2: ${p2}`);
+    this.p1ScoreText.setText(`${p1}`);
+    this.p2ScoreText.setText(`${p2}`);
   }
 
   private updateTurnBanner(currentPlayerId: string, phase: GamePhase): void {
     const isMyTurn = currentPlayerId === this.mySessionId;
-    if (phase === "simulating") {
-      this.turnBannerText.setText("…rolling");
-      this.hidePreviewBall();
-    } else if (phase === "gameOver") {
-      this.turnBannerText.setText("Game Over");
+    if (phase === "simulating" || phase === "gameOver") {
       this.hidePreviewBall();
     } else if (isMyTurn) {
-      this.turnBannerText.setText("Your turn — press & flick");
       this.showPreviewBall();
     } else {
-      this.turnBannerText.setText("Opponent's turn");
       this.hidePreviewBall();
     }
   }
@@ -418,17 +526,21 @@ export class GameScene extends Phaser.Scene {
   private initLocalMode(): void {
     this.localEngine = Matter.Engine.create({
       gravity: { x: 0, y: PHYSICS.GRAVITY_SCALE },
+      positionIterations: 10,
+      velocityIterations: 8,
+      enableSleeping: true,
     });
 
-    // Build walls in screen coordinates
     const W = ARENA.WIDTH * this.sx;
     const H = ARENA.HEIGHT * this.sy;
-    const T = ARENA.WALL_THICKNESS;
+    // Walls must be thicker than max ball velocity per step (28 * sx screen px).
+    // Use 200 screen px to guarantee no tunneling at any window size.
+    const T = 200;
     Matter.Composite.add(this.localEngine.world, [
-      Matter.Bodies.rectangle(W / 2, -T / 2, W, T, { isStatic: true }),
-      Matter.Bodies.rectangle(W / 2, H + T / 2, W, T, { isStatic: true }),
-      Matter.Bodies.rectangle(-T / 2, H / 2, T, H, { isStatic: true }),
-      Matter.Bodies.rectangle(W + T / 2, H / 2, T, H, { isStatic: true }),
+      Matter.Bodies.rectangle(W / 2, -T / 2, W + T * 2, T, { isStatic: true }),
+      Matter.Bodies.rectangle(W / 2, H + T / 2, W + T * 2, T, { isStatic: true }),
+      Matter.Bodies.rectangle(-T / 2, H / 2, T, H + T * 2, { isStatic: true }),
+      Matter.Bodies.rectangle(W + T / 2, H / 2, T, H + T * 2, { isStatic: true }),
     ]);
 
     this.localPhase = "p1Turn";
@@ -476,20 +588,19 @@ export class GameScene extends Phaser.Scene {
     this.passScreen.setVisible(true);
   }
 
-  private localHandleThrow(payload: ThrowPayload): void {
+  private localHandleThrow(payload: ThrowPayload, startScreenX: number, startScreenY: number): void {
     if (this.localPhase !== "p1Turn" && this.localPhase !== "p2Turn") return;
+
+    const roster = this.localCurrentPlayer === 1 ? this.localP1Roster : this.localP2Roster;
+    if (roster <= 0) return;
 
     const ballId = `local_${Date.now()}`;
     const isLeft = this.localCurrentPlayer === 1;
-    const startX = isLeft
-      ? ARENA.WIDTH * 0.25 * this.sx
-      : ARENA.WIDTH * 0.75 * this.sx;
-    const startY = (ARENA.HEIGHT / 2) * this.sy;
 
     const consts = BALL_PHYSICS["medium"];
     const scaledRadius = consts.radius * Math.min(this.sx, this.sy);
 
-    const body = Matter.Bodies.circle(startX, startY, scaledRadius, {
+    const body = Matter.Bodies.circle(startScreenX, startScreenY, scaledRadius, {
       mass: consts.mass,
       frictionAir: consts.frictionAir,
       restitution: consts.restitution,
@@ -497,7 +608,6 @@ export class GameScene extends Phaser.Scene {
       frictionStatic: consts.frictionStatic,
     });
 
-    // Payload vx/vy are in arena px/step — scale to screen px/step
     Matter.Body.setVelocity(body, {
       x: payload.vx * this.sx,
       y: payload.vy * this.sy,
@@ -506,14 +616,17 @@ export class GameScene extends Phaser.Scene {
     Matter.Composite.add(this.localEngine.world, body);
     this.localBodies.set(ballId, body);
     this.localBallOwners.set(ballId, this.localCurrentPlayer);
-    // Init crossing tracker to thrower's own half
-    this.localBallHalves.set(ballId, isLeft ? "left" : "right");
-
     this.localTurnBallId = ballId;
     this.localRestTicks = 0;
 
-    // Create visual ball
-    const ball = new Ball(this, startX, startY, "medium", ballId, isLeft);
+    // Deduct from roster
+    if (this.localCurrentPlayer === 1) this.localP1Roster--;
+    else this.localP2Roster--;
+    this.redrawRosterUI();
+
+    // Create visual ball with correctly scaled radius
+    const screenR = scaledRadius;
+    const ball = new Ball(this, startScreenX, startScreenY, "medium", ballId, isLeft, screenR);
     this.ballObjects.set(ballId, ball);
 
     this.localPhase = "simulating";
@@ -522,40 +635,98 @@ export class GameScene extends Phaser.Scene {
   private localStep(): void {
     Matter.Engine.update(this.localEngine, PHYSICS.DELTA_MS);
 
-    // Sync visuals
-    for (const [id, body] of this.localBodies) {
-      const obj = this.ballObjects.get(id);
-      if (obj) obj.syncFromState(body.position.x, body.position.y);
-    }
-
-    // Running tally: detect center-line crossings across all balls
-    const centerX = ARENA.CENTER_X * this.sx;
-    const buffer = ARENA.SCORE_BUFFER * this.sx;
-    for (const [id, body] of this.localBodies) {
-      let currSide: "left" | "right" | "center";
-      if (body.position.x < centerX - buffer) currSide = "left";
-      else if (body.position.x > centerX + buffer) currSide = "right";
-      else currSide = "center";
-
-      if (currSide !== "center") {
-        const lastSide = this.localBallHalves.get(id);
-        if (lastSide && lastSide !== currSide) {
-          this.localProcessCrossing(id, lastSide, currSide);
-          if (this.localPhase === "gameOver") return;
-        }
-        this.localBallHalves.set(id, currSide);
+    // Clamp near-zero velocities to prevent floating-point drift.
+    // Matter.js bodies accumulate sub-pixel noise from position correction
+    // that keeps them perpetually "awake" and creeping across the field.
+    for (const body of this.localBodies.values()) {
+      if (Math.hypot(body.velocity.x, body.velocity.y) < 0.15) {
+        Matter.Body.setVelocity(body, { x: 0, y: 0 });
       }
     }
 
-    if (!this.localTurnBallId) return;
+    // Sync visuals — snap to exact physics position (no lerp in local mode)
+    const centerX = ARENA.CENTER_X * this.sx;
+    const leftEndX = ARENA.LEFT_ENDZONE_END * this.sx;
+    const rightEndX = ARENA.RIGHT_ENDZONE_START * this.sx;
+    let p1Score = 0;
+    let p2Score = 0;
+    for (const [id, body] of this.localBodies) {
+      const obj = this.ballObjects.get(id);
+      if (obj) obj.snapToPosition(body.position.x, body.position.y);
 
-    // Check OOB for the current turn ball
-    const turnBody = this.localBodies.get(this.localTurnBallId);
-    if (!turnBody) return;
-    const W = ARENA.WIDTH * this.sx;
-    if (turnBody.position.x < 0 || turnBody.position.x > W) {
-      this.localEvaluateCaptured();
+      // Live score tally + scoring highlight
+      // Balls in the opponent's endzone are about to be captured — no green ring
+      const owner = this.localBallOwners.get(id);
+      const pastCenter =
+        owner === 1 ? body.position.x > centerX : body.position.x < centerX;
+      const inOpponentEndzone =
+        owner === 1
+          ? body.position.x > rightEndX
+          : body.position.x < leftEndX;
+      const isScoring = pastCenter && !inOpponentEndzone;
+      if (isScoring) {
+        if (owner === 1) p1Score++;
+        else p2Score++;
+      }
+      obj?.setScoring(isScoring);
+    }
+    if (p1Score !== this.localP1Score || p2Score !== this.localP2Score) {
+      this.localP1Score = p1Score;
+      this.localP2Score = p2Score;
+      this.p1ScoreText.setText(`${p1Score}`);
+      this.p2ScoreText.setText(`${p2Score}`);
+      if (p1Score >= RULES.WIN_SCORE || p2Score >= RULES.WIN_SCORE) {
+        const winner = p1Score >= RULES.WIN_SCORE ? 1 : 2;
+        this.localPhase = "gameOver";
+        this.showLocalGameOver(winner, { p1: p1Score, p2: p2Score });
+        return;
+      }
+    }
+
+    // Check for balls that have come to rest in the opponent's endzone
+    const toCapture: Array<{ id: string; capturer: 1 | 2 }> = [];
+    for (const [id, body] of this.localBodies) {
+      const speed = Math.hypot(body.velocity.x, body.velocity.y);
+      if (speed >= PHYSICS.REST_SPEED_THRESHOLD) continue;
+      const owner = this.localBallOwners.get(id);
+      if (!owner) continue;
+      const inOpponentEndzone =
+        owner === 1
+          ? body.position.x > rightEndX
+          : body.position.x < leftEndX;
+      if (inOpponentEndzone) {
+        toCapture.push({ id, capturer: owner === 1 ? 2 : 1 });
+      }
+    }
+    for (const { id, capturer } of toCapture) {
+      this.localCaptureByEndzone(id, capturer);
+      if (id === this.localTurnBallId) this.localTurnBallId = null;
+    }
+
+    if (!this.localTurnBallId) {
+      // Check if we should finalise (no current turn ball; all others at rest)
+      const allAtRest = [...this.localBodies.values()].every(
+        (b) => Math.hypot(b.velocity.x, b.velocity.y) < PHYSICS.REST_SPEED_THRESHOLD,
+      );
+      if (allAtRest) {
+        this.localRestTicks++;
+        if (this.localRestTicks >= PHYSICS.REST_TICKS_REQUIRED) {
+          this.localFinalizeRound();
+        }
+      } else {
+        this.localRestTicks = 0;
+      }
       return;
+    }
+
+    // OOB for the turn ball (tunnelling safety net)
+    const turnBody = this.localBodies.get(this.localTurnBallId);
+    if (turnBody) {
+      const W = ARENA.WIDTH * this.sx;
+      if (turnBody.position.x < 0 || turnBody.position.x > W) {
+        this.localEvaluateCaptured();
+        return;
+      }
     }
 
     // Wait for ALL balls to settle before ending the turn
@@ -572,36 +743,17 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  /** Ball crossed the center line — immediately update the running tally. */
-  private localProcessCrossing(
-    ballId: string,
-    _from: "left" | "right",
-    to: "left" | "right",
-  ): void {
-    const owner = this.localBallOwners.get(ballId);
-    if (!owner) return;
-    const ownerSide: "left" | "right" = owner === 1 ? "left" : "right";
-    const crossedToOpponent = to !== ownerSide;
-    const delta = crossedToOpponent ? 1 : -1;
 
-    if (owner === 1) {
-      this.localP1Score = Math.max(0, this.localP1Score + delta);
-      this.p1ScoreText.setText(`P1: ${this.localP1Score}`);
+  /** Ball rested in opponent's endzone — captured, added to opponent's roster. */
+  private localCaptureByEndzone(id: string, capturer: 1 | 2): void {
+    this.removeLocalBall(id);
+    if (capturer === 1) {
+      this.localP1Roster++;
     } else {
-      this.localP2Score = Math.max(0, this.localP2Score + delta);
-      this.p2ScoreText.setText(`P2: ${this.localP2Score}`);
+      this.localP2Roster++;
     }
-
-    this.showToast(delta > 0 ? "+1!" : "-1");
-
-    if (
-      this.localP1Score >= RULES.WIN_SCORE ||
-      this.localP2Score >= RULES.WIN_SCORE
-    ) {
-      const winner = this.localP1Score >= RULES.WIN_SCORE ? 1 : 2;
-      this.localPhase = "gameOver";
-      this.showLocalGameOver(winner, { p1: this.localP1Score, p2: this.localP2Score });
-    }
+    this.redrawRosterUI();
+    this.showToast(`P${capturer} captured a ball!`);
   }
 
   /** All balls at rest — ball stays on field, advance turn. */
@@ -621,19 +773,18 @@ export class GameScene extends Phaser.Scene {
     const capturingPlayer = this.localCurrentPlayer === 1 ? 2 : 1;
     this.showToast(`Player ${capturingPlayer} captured the ball!`);
 
-    // Bonus turn for capturing player — swap and let them throw again
+    // Bonus turn for capturing player
     this.localCurrentPlayer = capturingPlayer as 1 | 2;
     this.localPhase = this.localCurrentPlayer === 1 ? "p1Turn" : "p2Turn";
     this.showPassScreen();
   }
 
-  /** Remove a ball from physics + visuals (only called for OOB). */
+  /** Remove a ball from physics + visuals. Only called for OOB or endzone capture. */
   private removeLocalBall(ballId: string): void {
     const body = this.localBodies.get(ballId);
     if (body) Matter.Composite.remove(this.localEngine.world, body);
     this.localBodies.delete(ballId);
     this.localBallOwners.delete(ballId);
-    this.localBallHalves.delete(ballId);
 
     const obj = this.ballObjects.get(ballId);
     if (obj) {
@@ -668,18 +819,13 @@ export class GameScene extends Phaser.Scene {
 
     const color = winner === 1 ? "#4cc9f0" : "#f72585";
     this.add
-      .text(
-        this.sceneW / 2,
-        this.sceneH / 2 - 40,
-        `Player ${winner} Wins!`,
-        {
-          fontSize: "36px",
-          color,
-          fontFamily: "Arial Black",
-          stroke: "#000000",
-          strokeThickness: 4,
-        },
-      )
+      .text(this.sceneW / 2, this.sceneH / 2 - 40, `Player ${winner} Wins!`, {
+        fontSize: "36px",
+        color,
+        fontFamily: "Arial Black",
+        stroke: "#000000",
+        strokeThickness: 4,
+      })
       .setOrigin(0.5)
       .setDepth(31);
 
@@ -708,16 +854,22 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateLocalBanner(): void {
-    this.turnBannerText.setText(
-      `Player ${this.localCurrentPlayer}'s turn — press & flick`,
-    );
-    this.p1ScoreText.setColor(
-      this.localCurrentPlayer === 1 ? "#ffffff" : "#4cc9f0",
-    );
-    this.p2ScoreText.setColor(
-      this.localCurrentPlayer === 2 ? "#ffffff" : "#f72585",
-    );
-    this.showPreviewBall();
+    const roster =
+      this.localCurrentPlayer === 1 ? this.localP1Roster : this.localP2Roster;
+
+    this.updateTurnIndicators();
+
+    if (roster > 0) {
+      this.showPreviewBall();
+    } else {
+      this.hidePreviewBall();
+      // No balls — skip turn after brief delay
+      this.time.delayedCall(800, () => {
+        if (this.localPhase !== "p1Turn" && this.localPhase !== "p2Turn") return;
+        this.showToast(`Player ${this.localCurrentPlayer} has no balls!`);
+        this.localAdvanceTurn();
+      });
+    }
   }
 
   // ─── Toast / Game Over ─────────────────────────────────────────────────────
@@ -780,11 +932,7 @@ export class GameScene extends Phaser.Scene {
         this.sceneW / 2,
         this.sceneH / 2 + 20,
         `Final score — P1: ${score.p1}  P2: ${score.p2}`,
-        {
-          fontSize: "18px",
-          color: "#ffffff",
-          fontFamily: "Arial",
-        },
+        { fontSize: "18px", color: "#ffffff", fontFamily: "Arial" },
       )
       .setOrigin(0.5)
       .setDepth(31);

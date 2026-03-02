@@ -14,6 +14,13 @@ export const ARENA = {
 
   // Scoring zone: ball must be fully within opponent half (with a small buffer)
   SCORE_BUFFER: 10,  // px — ball centre must be at least this far from center line
+
+  // Endzones — back ~19% of each player's side
+  LEFT_ENDZONE_END: 100,     // P1 throws from x=0..100
+  RIGHT_ENDZONE_START: 700,  // P2 throws from x=700..800
+
+  /** Starting number of balls per player */
+  INITIAL_ROSTER_SIZE: 4,
 } as const;
 
 // ─── Physics Simulation ───────────────────────────────────────────────────────

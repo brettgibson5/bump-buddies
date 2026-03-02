@@ -12,7 +12,6 @@ export class Ball extends Phaser.GameObjects.Container {
   private sprite: Phaser.GameObjects.Arc;
   private shadow: Phaser.GameObjects.Arc;
   private ownerId: string;
-  private ballSize: BallSize;
   private isLeft: boolean; // true = owned by left player
 
   private targetX: number;
@@ -24,16 +23,16 @@ export class Ball extends Phaser.GameObjects.Container {
     y: number,
     size: BallSize,
     ownerId: string,
-    isLeft: boolean
+    isLeft: boolean,
+    screenRadius?: number
   ) {
     super(scene, x, y);
     this.ownerId = ownerId;
-    this.ballSize = size;
     this.isLeft = isLeft;
     this.targetX = x;
     this.targetY = y;
 
-    const radius = BALL_PHYSICS[size].radius;
+    const radius = screenRadius ?? BALL_PHYSICS[size].radius;
     const color = isLeft ? 0x4cc9f0 : 0xf72585;
     const shadowAlpha = 0.35;
 
@@ -59,8 +58,16 @@ export class Ball extends Phaser.GameObjects.Container {
     this.targetY = y;
   }
 
+  /** Teleport to exact position — use in local mode to keep visual in sync with physics. */
+  snapToPosition(x: number, y: number): void {
+    this.x = x;
+    this.y = y;
+    this.targetX = x;
+    this.targetY = y;
+  }
+
   preUpdate(): void {
-    // Smooth interpolation toward server position
+    // Smooth interpolation toward server position (online mode only)
     this.x = Phaser.Math.Linear(this.x, this.targetX, LERP_ALPHA);
     this.y = Phaser.Math.Linear(this.y, this.targetY, LERP_ALPHA);
   }
@@ -103,6 +110,15 @@ export class Ball extends Phaser.GameObjects.Container {
         callback?.();
       },
     });
+  }
+
+  /** Show a green border when this ball is currently scoring. */
+  setScoring(on: boolean): void {
+    if (on) {
+      this.sprite.setStrokeStyle(5, 0x00ff66, 1);
+    } else {
+      this.sprite.setStrokeStyle(2, 0xffffff, 0.6);
+    }
   }
 
   highlight(on: boolean): void {

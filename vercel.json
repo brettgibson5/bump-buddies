@@ -1,0 +1,5 @@
+{
+  "installCommand": "pnpm install",
+  "buildCommand": "pnpm --filter @pinbuddys/client build",
+  "outputDirectory": "packages/client/dist"
+}

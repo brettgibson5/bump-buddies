@@ -44,14 +44,16 @@ export class PhysicsEngine {
   private buildArena(): void {
     const W = ARENA.WIDTH;
     const H = ARENA.HEIGHT;
-    const T = ARENA.WALL_THICKNESS;
+    // Use thick walls (80 arena units) to prevent tunneling.
+    // MAX_FLICK_VELOCITY is 28 arena px/step, so walls must be > 28 thick.
+    const T = 80;
 
     // Top wall, bottom wall, left wall, right wall (static bodies)
     const walls = [
-      Bodies.rectangle(W / 2, -T / 2, W, T, { isStatic: true, label: "wallTop" }),
-      Bodies.rectangle(W / 2, H + T / 2, W, T, { isStatic: true, label: "wallBottom" }),
-      Bodies.rectangle(-T / 2, H / 2, T, H, { isStatic: true, label: "wallLeft" }),
-      Bodies.rectangle(W + T / 2, H / 2, T, H, { isStatic: true, label: "wallRight" }),
+      Bodies.rectangle(W / 2, -T / 2, W + T * 2, T, { isStatic: true, label: "wallTop" }),
+      Bodies.rectangle(W / 2, H + T / 2, W + T * 2, T, { isStatic: true, label: "wallBottom" }),
+      Bodies.rectangle(-T / 2, H / 2, T, H + T * 2, { isStatic: true, label: "wallLeft" }),
+      Bodies.rectangle(W + T / 2, H / 2, T, H + T * 2, { isStatic: true, label: "wallRight" }),
     ];
     World.add(this.world, walls);
   }

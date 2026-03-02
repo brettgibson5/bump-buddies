@@ -19,6 +19,7 @@ export class Arena extends Phaser.GameObjects.Container {
 
     this.buildBackground(sceneW, sceneH);
     this.buildScoringHighlights(sceneW, sceneH);
+    this.buildEndzones(sceneW, sceneH);
     this.buildDivider(sceneW, sceneH);
 
     scene.add.existing(this);
@@ -56,6 +57,37 @@ export class Arena extends Phaser.GameObjects.Container {
       0,
     );
     this.add([this.leftHighlight, this.rightHighlight]);
+  }
+
+  private buildEndzones(w: number, h: number): void {
+    const sx = this.scaleX_;
+    const endW = ARENA.LEFT_ENDZONE_END * sx; // 200 arena units → screen px
+
+    // Dark gray tint overlays — "danger zone" feel
+    const leftZone = this.scene.add
+      .rectangle(0, 0, endW, h, 0x111111, 0.55)
+      .setOrigin(0);
+    const rightZone = this.scene.add
+      .rectangle(w - endW, 0, endW, h, 0x111111, 0.55)
+      .setOrigin(0);
+    this.add([leftZone, rightZone]);
+
+    // Dashed boundary lines at x=200 and x=600
+    const line = this.scene.add.graphics();
+    line.lineStyle(1, 0xffffff, 0.2);
+    const dashLen = 8;
+    const gap = 6;
+    for (const x of [endW, w - endW]) {
+      let y = 0;
+      while (y < h) {
+        line.beginPath();
+        line.moveTo(x, y);
+        line.lineTo(x, Math.min(y + dashLen, h));
+        line.strokePath();
+        y += dashLen + gap;
+      }
+    }
+    this.add(line);
   }
 
   private buildDivider(w: number, h: number): void {

@@ -21,12 +21,12 @@ export const BALL_PHYSICS: Record<BallSize, BallPhysicsConstants> = {
     friction: 0.02,
   },
   medium: {
-    radius: 22,
+    radius: 13,
     mass: 1.0,
     frictionAir: 0.012,
-    restitution: 0.65,
-    frictionStatic: 0.02,
-    friction: 0.01,
+    restitution: 0.85,
+    frictionStatic: 0.015,
+    friction: 0.008,
   },
   large: {
     radius: 40,
