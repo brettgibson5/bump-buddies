@@ -424,10 +424,10 @@ export class GameScene extends Phaser.Scene {
     this.input.on("pointermove", (ptr: Phaser.Input.Pointer) => {
       if (!this.aimState.active) return;
 
-      // Clamp to endzone bounds + arena vertical bounds
+      // Clamp to endzone bounds (portrait: locked to Y endzone, free in X; landscape: vice versa)
       const bounds = this.getEndzoneBounds();
       const clampedX = Phaser.Math.Clamp(ptr.x, bounds.minX, bounds.maxX);
-      const clampedY = Phaser.Math.Clamp(ptr.y, 0, this.sceneH);
+      const clampedY = Phaser.Math.Clamp(ptr.y, bounds.minY, bounds.maxY);
 
       this.flickHistory.push({ x: clampedX, y: clampedY, t: Date.now() });
       if (this.previewBall) this.previewBall.setPosition(clampedX, clampedY);
@@ -681,10 +681,9 @@ export class GameScene extends Phaser.Scene {
       enableSleeping: true,
     });
 
-    const W = ARENA.WIDTH * this.sx;
-    const H = ARENA.HEIGHT * this.sy;
-    // Walls must be thicker than max ball velocity per step (28 * sx screen px).
-    // Use 200 screen px to guarantee no tunneling at any window size.
+    // Physics walls are in screen space — always use actual scene dimensions.
+    const W = this.sceneW;
+    const H = this.sceneH;
     const T = 200;
     Matter.Composite.add(this.localEngine.world, [
       Matter.Bodies.rectangle(W / 2, -T / 2, W + T * 2, T, { isStatic: true }),
