@@ -40,10 +40,11 @@ export class GameScene extends Phaser.Scene {
   private sy = 1;
   /** True when the screen is taller than wide (phone held vertically). */
   private portrait = false;
-  /** Portrait-only: stored dot row y positions for redrawRosterUI. */
+  /** Portrait-only: stored dot positions for redrawRosterUI. */
   private portraitDotsP1Y = 0;
   private portraitDotsP2Y = 0;
-  private portraitDotsPadX = 16;
+  private portraitDotsP1PadX = 16;  // left-edge x for P1 dots
+  private portraitDotsP2PadX = 16;  // right-edge x offset for P2 dots (from sceneW)
 
   // ─── Mode ──────────────────────────────────────────────────────────────────
   private isLocal = false;
@@ -212,70 +213,81 @@ export class GameScene extends Phaser.Scene {
   /**
    * Portrait — builds score text, turn labels, and roster dots together.
    *
-   * P1 bottom (normal):    [● ● ● ● ● ● ● ●]
+   * P1 bottom (normal):    [● ● ● ● ● ● ● ●]   ← dots above turn text, left-aligned with it
    *                        [0]  Blue's Turn
    *
-   * P2 top (rotated 180°): Red's Turn  [0]    ← our view
+   * P2 top (rotated 180°): Red's Turn  [0]       ← our view; score is topmost-right, fully visible
    *                        [● ● ● ● ● ● ● ●]
+   *
+   * P2 rotation note: origin(0,1) + angle(180°) maps as:
+   *   visual RIGHT edge = pivot x,  visual TOP edge = pivot y
+   * This keeps the text fully on-screen at the top-right corner.
    */
   private buildPortraitUI(): void {
     const padX = 16;
-    const padYBottom = 24;   // P1 baseline from bottom edge
-    const padYTop = 28;      // P2 baseline from top edge (extra to prevent cutoff)
+    const padYBottom = 24;  // P1 turn-text baseline from bottom edge
+    const padYTop = 28;     // P2 pivot y from top edge
 
     const endH = ARENA.LEFT_ENDZONE_END * this.sy;
     const fs = Math.round(Math.min(endH * 0.4, this.sceneW * 0.1, 56));
 
-    // Width budget reserved for the score number (Arial Black, up to 2 digits)
-    const scoreW = fs * 1.0;
+    const scoreW = fs * 1.0;   // estimated max width of 2-digit Arial Black score
     const labelGap = 8;
-    const dotsGap = 6;  // vertical gap between dots row and score baseline
+    const turnH = 14;          // approx rendered height of 12px turn label
+    const dotsR = 5;
+    const dotsAbove = 10;      // gap between dots bottom and turn text top
 
     // ── P1 — bottom-left ─────────────────────────────────────────────────────
-    const p1BaseY = this.sceneH - padYBottom;
+    const p1TurnY = this.sceneH - padYBottom;   // turn text baseline
 
+    this.p1TurnText = this.add
+      .text(padX + scoreW + labelGap, p1TurnY, "Blue's Turn", {
+        fontSize: "12px", color: "#4cc9f0", fontFamily: "Arial", fontStyle: "bold",
+      })
+      .setOrigin(0, 1)
+      .setDepth(11);
+
+    // Score bottom-aligned with turn text. Arial Black bounding box includes descender
+    // space, so the visible digit sits ~6px above the box bottom — offset compensates.
     this.p1ScoreText = this.add
-      .text(padX, p1BaseY, "0", {
+      .text(padX, p1TurnY + 6, "0", {
         fontSize: `${fs}px`, color: "#4cc9f0",
         fontFamily: "Arial Black", stroke: "#000000", strokeThickness: 2,
       })
       .setOrigin(0, 1)
       .setDepth(8);
 
-    this.p1TurnText = this.add
-      .text(padX + scoreW + labelGap, p1BaseY, "Blue's Turn", {
-        fontSize: "12px", color: "#4cc9f0", fontFamily: "Arial", fontStyle: "bold",
-      })
-      .setOrigin(0, 1)
-      .setDepth(11);
-
-    // Dots row sits above the score text
-    this.portraitDotsP1Y = p1BaseY - fs - dotsGap;
-    this.portraitDotsPadX = padX;
+    // Dots: left-aligned with turn text, 10px above turn text top
+    const p1TurnTop = p1TurnY - turnH;
+    this.portraitDotsP1Y = p1TurnTop - dotsAbove - dotsR;
+    this.portraitDotsP1PadX = padX + scoreW + labelGap;
 
     // ── P2 — top-right, rotated 180° ─────────────────────────────────────────
-    const p2BaseY = padYTop;
+    // With origin(0,1) + angle(180°): visual right = pivot x, visual top = pivot y.
+    const p2PivotY = padYTop;
 
     this.p2ScoreText = this.add
-      .text(this.sceneW - padX, p2BaseY, "0", {
+      .text(this.sceneW - padX, p2PivotY, "0", {
         fontSize: `${fs}px`, color: "#f72585",
         fontFamily: "Arial Black", stroke: "#000000", strokeThickness: 2,
       })
-      .setOrigin(1, 0)
+      .setOrigin(0, 1)
       .setAngle(180)
       .setDepth(8);
 
-    // "Red's Turn" sits to the LEFT of the score from our view (mirrors P1 for P2's reading)
+    // "Red's Turn" left of score from our view; pivot sits at score's left edge minus gap
     this.p2TurnText = this.add
-      .text(this.sceneW - padX - scoreW - labelGap, p2BaseY, "Red's Turn", {
+      .text(this.sceneW - padX - scoreW - labelGap, p2PivotY, "Red's Turn", {
         fontSize: "12px", color: "#f72585", fontFamily: "Arial", fontStyle: "bold",
       })
-      .setOrigin(1, 0)
+      .setOrigin(0, 1)
       .setAngle(180)
       .setDepth(11);
 
-    // Dots row sits below the score from our view (= above from P2's view)
-    this.portraitDotsP2Y = p2BaseY + fs + dotsGap;
+    // Dots: right-aligned mirror of P1 (10px below turn text visual bottom from our view)
+    const p2TurnBottom = p2PivotY + turnH;
+    this.portraitDotsP2Y = p2TurnBottom + dotsAbove + dotsR;
+    this.portraitDotsP2PadX = padX + scoreW + labelGap;
 
     this.turnIndicatorGraphics = this.add.graphics().setDepth(10);
     this.rosterGraphics = this.add.graphics().setDepth(10);
@@ -325,28 +337,26 @@ export class GameScene extends Phaser.Scene {
   }
 
   private drawRosterPortrait(g: Phaser.GameObjects.Graphics): void {
-    const r = 5, gap = 4;
-    const maxBalls = 8;
-    const padX = this.portraitDotsPadX;
+    const r = 5, gap = 4, maxBalls = 8;
 
-    // P1 — dots row left-aligned with the score, above the score text
+    // P1 — left-aligned with turn text, above it
     for (let i = 0; i < maxBalls; i++) {
-      const cx = padX + i * (r * 2 + gap) + r;
-      const cy = this.portraitDotsP1Y;
+      const cx = this.portraitDotsP1PadX + i * (r * 2 + gap) + r;
       const filled = i < this.localP1Roster;
       g.lineStyle(1.5, 0x4cc9f0, filled ? 1 : 0.3);
       g.fillStyle(0x4cc9f0, filled ? 0.85 : 0.1);
-      g.fillCircle(cx, cy, r); g.strokeCircle(cx, cy, r);
+      g.fillCircle(cx, this.portraitDotsP1Y, r);
+      g.strokeCircle(cx, this.portraitDotsP1Y, r);
     }
 
-    // P2 — dots row right-aligned (mirrors P1), below score from our view = above from P2's
+    // P2 — right-aligned mirror of P1, below score from our view (= above from P2's view)
     for (let i = 0; i < maxBalls; i++) {
-      const cx = this.sceneW - padX - i * (r * 2 + gap) - r;
-      const cy = this.portraitDotsP2Y;
+      const cx = this.sceneW - this.portraitDotsP2PadX - i * (r * 2 + gap) - r;
       const filled = i < this.localP2Roster;
       g.lineStyle(1.5, 0xf72585, filled ? 1 : 0.3);
       g.fillStyle(0xf72585, filled ? 0.85 : 0.1);
-      g.fillCircle(cx, cy, r); g.strokeCircle(cx, cy, r);
+      g.fillCircle(cx, this.portraitDotsP2Y, r);
+      g.strokeCircle(cx, this.portraitDotsP2Y, r);
     }
   }
 
