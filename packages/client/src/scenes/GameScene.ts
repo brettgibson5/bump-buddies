@@ -235,7 +235,7 @@ export class GameScene extends Phaser.Scene {
     const labelGap = 8;
     const turnH = 14;          // approx rendered height of 12px turn label
     const dotsR = 5;
-    const dotsAbove = 10;      // gap between dots bottom and turn text top
+    const dotsAbove = 15;      // gap between dots bottom and turn text top
 
     // ── P1 — bottom-left ─────────────────────────────────────────────────────
     const p1TurnY = this.sceneH - padYBottom;   // turn text baseline
@@ -247,10 +247,8 @@ export class GameScene extends Phaser.Scene {
       .setOrigin(0, 1)
       .setDepth(11);
 
-    // Score bottom-aligned with turn text. Arial Black bounding box includes descender
-    // space, so the visible digit sits ~6px above the box bottom — offset compensates.
     this.p1ScoreText = this.add
-      .text(padX, p1TurnY + 6, "0", {
+      .text(padX, p1TurnY, "0", {
         fontSize: `${fs}px`, color: "#4cc9f0",
         fontFamily: "Arial Black", stroke: "#000000", strokeThickness: 2,
       })
@@ -267,7 +265,7 @@ export class GameScene extends Phaser.Scene {
     const p2PivotY = padYTop;
 
     this.p2ScoreText = this.add
-      .text(this.sceneW - padX, p2PivotY, "0", {
+      .text(this.sceneW - padX, p2PivotY + 10, "0", {
         fontSize: `${fs}px`, color: "#f72585",
         fontFamily: "Arial Black", stroke: "#000000", strokeThickness: 2,
       })
