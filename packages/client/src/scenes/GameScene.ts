@@ -3,10 +3,7 @@ import { Arena } from "../objects/Arena";
 import { Ball } from "../objects/Ball";
 import { colyseusService } from "../network/ColyseusClient";
 import { ARENA, PHYSICS, BALL_PHYSICS, RULES } from "@pinbuddys/shared";
-import type {
-  GamePhase,
-  ThrowPayload,
-} from "@pinbuddys/shared";
+import type { GamePhase, ThrowPayload } from "@pinbuddys/shared";
 
 // Matter.js (browser build) — used for LOCAL mode physics only
 import Matter from "matter-js";
@@ -43,8 +40,8 @@ export class GameScene extends Phaser.Scene {
   /** Portrait-only: stored dot positions for redrawRosterUI. */
   private portraitDotsP1Y = 0;
   private portraitDotsP2Y = 0;
-  private portraitDotsP1PadX = 16;  // left-edge x for P1 dots
-  private portraitDotsP2PadX = 16;  // right-edge x offset for P2 dots (from sceneW)
+  private portraitDotsP1PadX = 16; // left-edge x for P1 dots
+  private portraitDotsP2PadX = 16; // right-edge x offset for P2 dots (from sceneW)
 
   // ─── Mode ──────────────────────────────────────────────────────────────────
   private isLocal = false;
@@ -146,11 +143,9 @@ export class GameScene extends Phaser.Scene {
     const circleY = this.sceneH - 40;
     const offset = 8;
     // +30% larger than original formula
-    const fs = Math.round(Math.min(
-      ARENA.LEFT_ENDZONE_END * this.sx * 0.52,
-      this.sceneH * 0.13,
-      73,
-    ));
+    const fs = Math.round(
+      Math.min(ARENA.LEFT_ENDZONE_END * this.sx * 0.52, this.sceneH * 0.13, 73),
+    );
 
     const dpr = window.devicePixelRatio || 1;
 
@@ -233,25 +228,28 @@ export class GameScene extends Phaser.Scene {
    */
   private buildPortraitUI(): void {
     const padX = 16;
-    const padYBottom = 24;  // P1 turn-text baseline from bottom edge
-    const padYTop = 28;     // P2 pivot y from top edge
+    const padYBottom = 24; // P1 turn-text baseline from bottom edge
+    const padYTop = 28; // P2 pivot y from top edge
 
     const endH = ARENA.LEFT_ENDZONE_END * this.sy;
     const fs = Math.round(Math.min(endH * 0.4, this.sceneW * 0.1, 56));
 
-    const scoreW = fs * 1.0;   // estimated max width of 2-digit Arial Black score
+    const scoreW = fs * 1.0; // estimated max width of 2-digit Arial Black score
     const labelGap = 8;
-    const turnH = 14;          // approx rendered height of 12px turn label
+    const turnH = 14; // approx rendered height of 12px turn label
     const dotsR = 5;
-    const dotsAbove = 15;      // gap between dots bottom and turn text top
+    const dotsAbove = 15; // gap between dots bottom and turn text top
 
     // ── P1 — bottom-left ─────────────────────────────────────────────────────
-    const p1TurnY = this.sceneH - padYBottom;   // turn text baseline
+    const p1TurnY = this.sceneH - padYBottom; // turn text baseline
     const dpr = window.devicePixelRatio || 1;
 
     this.p1TurnText = this.add
       .text(padX + scoreW + labelGap, p1TurnY, "Blue's Turn", {
-        fontSize: "12px", color: "#4cc9f0", fontFamily: "Arial", fontStyle: "bold",
+        fontSize: "12px",
+        color: "#4cc9f0",
+        fontFamily: "Arial",
+        fontStyle: "bold",
       })
       .setOrigin(0, 1)
       .setDepth(11)
@@ -259,8 +257,11 @@ export class GameScene extends Phaser.Scene {
 
     this.p1ScoreText = this.add
       .text(padX, p1TurnY, "0", {
-        fontSize: `${fs}px`, color: "#4cc9f0",
-        fontFamily: "Arial Black", stroke: "#000000", strokeThickness: 2,
+        fontSize: `${fs}px`,
+        color: "#4cc9f0",
+        fontFamily: "Arial Black",
+        stroke: "#000000",
+        strokeThickness: 2,
       })
       .setOrigin(0, 1)
       .setDepth(8)
@@ -277,8 +278,11 @@ export class GameScene extends Phaser.Scene {
 
     this.p2ScoreText = this.add
       .text(this.sceneW - padX, p2PivotY + 10, "0", {
-        fontSize: `${fs}px`, color: "#f72585",
-        fontFamily: "Arial Black", stroke: "#000000", strokeThickness: 2,
+        fontSize: `${fs}px`,
+        color: "#f72585",
+        fontFamily: "Arial Black",
+        stroke: "#000000",
+        strokeThickness: 2,
       })
       .setOrigin(0, 1)
       .setAngle(180)
@@ -288,7 +292,10 @@ export class GameScene extends Phaser.Scene {
     // "Red's Turn" left of score from our view; pivot sits at score's left edge minus gap
     this.p2TurnText = this.add
       .text(this.sceneW - padX - scoreW - labelGap, p2PivotY, "Red's Turn", {
-        fontSize: "12px", color: "#f72585", fontFamily: "Arial", fontStyle: "bold",
+        fontSize: "12px",
+        color: "#f72585",
+        fontFamily: "Arial",
+        fontStyle: "bold",
       })
       .setOrigin(0, 1)
       .setAngle(180)
@@ -319,7 +326,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   private drawRosterLandscape(g: Phaser.GameObjects.Graphics): void {
-    const r = 5, gap = 4, perRow = 4, padX = 12;
+    const r = 5,
+      gap = 4,
+      perRow = 4,
+      padX = 12;
     const rowH = r * 2 + gap;
     const bottomY = this.sceneH - 16;
     const maxBalls = 8;
@@ -332,7 +342,8 @@ export class GameScene extends Phaser.Scene {
       const filled = i < this.localP1Roster;
       g.lineStyle(1.5, 0x4cc9f0, filled ? 1 : 0.3);
       g.fillStyle(0x4cc9f0, filled ? 0.85 : 0.1);
-      g.fillCircle(cx, cy, r); g.strokeCircle(cx, cy, r);
+      g.fillCircle(cx, cy, r);
+      g.strokeCircle(cx, cy, r);
     }
 
     for (let i = 0; i < maxBalls; i++) {
@@ -343,12 +354,15 @@ export class GameScene extends Phaser.Scene {
       const filled = i < this.localP2Roster;
       g.lineStyle(1.5, 0xf72585, filled ? 1 : 0.3);
       g.fillStyle(0xf72585, filled ? 0.85 : 0.1);
-      g.fillCircle(cx, cy, r); g.strokeCircle(cx, cy, r);
+      g.fillCircle(cx, cy, r);
+      g.strokeCircle(cx, cy, r);
     }
   }
 
   private drawRosterPortrait(g: Phaser.GameObjects.Graphics): void {
-    const r = 5, gap = 4, maxBalls = 8;
+    const r = 5,
+      gap = 4,
+      maxBalls = 8;
 
     // P1 — left-aligned with turn text, above it
     for (let i = 0; i < maxBalls; i++) {
@@ -372,7 +386,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateTurnIndicators(): void {
-    if (!this.p1TurnText || !this.p2TurnText || !this.turnIndicatorGraphics) return;
+    if (!this.p1TurnText || !this.p2TurnText || !this.turnIndicatorGraphics)
+      return;
 
     const isP1Turn = this.localCurrentPlayer === 1;
     this.p1TurnText.setAlpha(isP1Turn ? 1 : 0.3);
@@ -387,7 +402,8 @@ export class GameScene extends Phaser.Scene {
       active: boolean,
     ) => {
       const b = text.getBounds();
-      const px = 8, py = 5;
+      const px = 8,
+        py = 5;
       const x = b.left - px;
       const y = b.top - py;
       const w = b.width + px * 2;
@@ -408,21 +424,43 @@ export class GameScene extends Phaser.Scene {
    * Returns the endzone bounds for the current player.
    * In landscape: x bounds. In portrait: y bounds (P1=bottom, P2=top).
    */
-  private getEndzoneBounds(): { minX: number; maxX: number; minY: number; maxY: number } {
-    const isP1 = this.isLocal ? this.localCurrentPlayer === 1 : this.myPlayerSide === "left";
+  private getEndzoneBounds(): {
+    minX: number;
+    maxX: number;
+    minY: number;
+    maxY: number;
+  } {
+    const isP1 = this.isLocal
+      ? this.localCurrentPlayer === 1
+      : this.myPlayerSide === "left";
 
     if (this.portrait) {
       // sy maps ARENA.WIDTH (800) → sceneH
       const endH = ARENA.LEFT_ENDZONE_END * this.sy;
       // P1 = bottom endzone (high y), P2 = top endzone (low y)
       return isP1
-        ? { minX: 0, maxX: this.sceneW, minY: this.sceneH - endH, maxY: this.sceneH }
+        ? {
+            minX: 0,
+            maxX: this.sceneW,
+            minY: this.sceneH - endH,
+            maxY: this.sceneH,
+          }
         : { minX: 0, maxX: this.sceneW, minY: 0, maxY: endH };
     }
 
     return isP1
-      ? { minX: 0, maxX: ARENA.LEFT_ENDZONE_END * this.sx, minY: 0, maxY: this.sceneH }
-      : { minX: ARENA.RIGHT_ENDZONE_START * this.sx, maxX: this.sceneW, minY: 0, maxY: this.sceneH };
+      ? {
+          minX: 0,
+          maxX: ARENA.LEFT_ENDZONE_END * this.sx,
+          minY: 0,
+          maxY: this.sceneH,
+        }
+      : {
+          minX: ARENA.RIGHT_ENDZONE_START * this.sx,
+          maxX: this.sceneW,
+          minY: 0,
+          maxY: this.sceneH,
+        };
   }
 
   private setupInput(): void {
@@ -436,7 +474,9 @@ export class GameScene extends Phaser.Scene {
 
       // Check player has balls remaining
       const hasRoster = this.isLocal
-        ? (this.localCurrentPlayer === 1 ? this.localP1Roster : this.localP2Roster) > 0
+        ? (this.localCurrentPlayer === 1
+            ? this.localP1Roster
+            : this.localP2Roster) > 0
         : true; // online mode: server tracks roster
       if (!hasRoster) return;
 
@@ -525,7 +565,9 @@ export class GameScene extends Phaser.Scene {
 
   /** Center of the current player's endzone in screen px. */
   private getEndzoneCenterPoint(): { x: number; y: number } {
-    const isP1 = this.isLocal ? this.localCurrentPlayer === 1 : this.myPlayerSide === "left";
+    const isP1 = this.isLocal
+      ? this.localCurrentPlayer === 1
+      : this.myPlayerSide === "left";
 
     if (this.portrait) {
       const endH = ARENA.LEFT_ENDZONE_END * this.sy;
@@ -536,7 +578,10 @@ export class GameScene extends Phaser.Scene {
     }
 
     return {
-      x: (isP1 ? ARENA.LEFT_ENDZONE_END / 2 : (ARENA.RIGHT_ENDZONE_START + ARENA.WIDTH) / 2) * this.sx,
+      x:
+        (isP1
+          ? ARENA.LEFT_ENDZONE_END / 2
+          : (ARENA.RIGHT_ENDZONE_START + ARENA.WIDTH) / 2) * this.sx,
       y: ARENA.HEIGHT * 0.5 * this.sy,
     };
   }
@@ -585,7 +630,12 @@ export class GameScene extends Phaser.Scene {
     this.previewBall = null;
   }
 
-  private performThrow(vx: number, vy: number, startScreenX: number, startScreenY: number): void {
+  private performThrow(
+    vx: number,
+    vy: number,
+    startScreenX: number,
+    startScreenY: number,
+  ): void {
     const payload: ThrowPayload = { vx, vy };
     if (this.isLocal) {
       this.localHandleThrow(payload, startScreenX, startScreenY);
@@ -718,9 +768,13 @@ export class GameScene extends Phaser.Scene {
     const T = 200;
     Matter.Composite.add(this.localEngine.world, [
       Matter.Bodies.rectangle(W / 2, -T / 2, W + T * 2, T, { isStatic: true }),
-      Matter.Bodies.rectangle(W / 2, H + T / 2, W + T * 2, T, { isStatic: true }),
+      Matter.Bodies.rectangle(W / 2, H + T / 2, W + T * 2, T, {
+        isStatic: true,
+      }),
       Matter.Bodies.rectangle(-T / 2, H / 2, T, H + T * 2, { isStatic: true }),
-      Matter.Bodies.rectangle(W + T / 2, H / 2, T, H + T * 2, { isStatic: true }),
+      Matter.Bodies.rectangle(W + T / 2, H / 2, T, H + T * 2, {
+        isStatic: true,
+      }),
     ]);
 
     this.localPhase = "p1Turn";
@@ -730,6 +784,7 @@ export class GameScene extends Phaser.Scene {
 
   private buildPassScreen(): void {
     const { width, height } = this.scale;
+    const dpr = Math.min(window.devicePixelRatio || 1, 3);
     const bg = this.add
       .rectangle(0, 0, width, height, 0x000000, 0.85)
       .setOrigin(0);
@@ -740,14 +795,16 @@ export class GameScene extends Phaser.Scene {
         fontFamily: "Arial",
         align: "center",
       })
-      .setOrigin(0.5);
+      .setOrigin(0.5)
+      .setResolution(dpr);
     const hint = this.add
       .text(width / 2, height / 2 + 30, "Tap to continue", {
         fontSize: "16px",
         color: "#aaaacc",
         fontFamily: "Arial",
       })
-      .setOrigin(0.5);
+      .setOrigin(0.5)
+      .setResolution(dpr);
 
     this.passScreen = this.add
       .container(0, 0, [bg, msg, hint])
@@ -768,10 +825,15 @@ export class GameScene extends Phaser.Scene {
     this.passScreen.setVisible(true);
   }
 
-  private localHandleThrow(payload: ThrowPayload, startScreenX: number, startScreenY: number): void {
+  private localHandleThrow(
+    payload: ThrowPayload,
+    startScreenX: number,
+    startScreenY: number,
+  ): void {
     if (this.localPhase !== "p1Turn" && this.localPhase !== "p2Turn") return;
 
-    const roster = this.localCurrentPlayer === 1 ? this.localP1Roster : this.localP2Roster;
+    const roster =
+      this.localCurrentPlayer === 1 ? this.localP1Roster : this.localP2Roster;
     if (roster <= 0) return;
 
     const ballId = `local_${Date.now()}`;
@@ -780,13 +842,18 @@ export class GameScene extends Phaser.Scene {
     const consts = BALL_PHYSICS["medium"];
     const scaledRadius = consts.radius * Math.min(this.sx, this.sy);
 
-    const body = Matter.Bodies.circle(startScreenX, startScreenY, scaledRadius, {
-      mass: consts.mass,
-      frictionAir: consts.frictionAir,
-      restitution: consts.restitution,
-      friction: consts.friction,
-      frictionStatic: consts.frictionStatic,
-    });
+    const body = Matter.Bodies.circle(
+      startScreenX,
+      startScreenY,
+      scaledRadius,
+      {
+        mass: consts.mass,
+        frictionAir: consts.frictionAir,
+        restitution: consts.restitution,
+        friction: consts.friction,
+        frictionStatic: consts.frictionStatic,
+      },
+    );
 
     Matter.Body.setVelocity(body, {
       x: payload.vx * this.sx,
@@ -806,7 +873,15 @@ export class GameScene extends Phaser.Scene {
 
     // Create visual ball with correctly scaled radius
     const screenR = scaledRadius;
-    const ball = new Ball(this, startScreenX, startScreenY, "medium", ballId, isLeft, screenR);
+    const ball = new Ball(
+      this,
+      startScreenX,
+      startScreenY,
+      "medium",
+      ballId,
+      isLeft,
+      screenR,
+    );
     this.ballObjects.set(ballId, ball);
 
     this.localPhase = "simulating";
@@ -832,8 +907,8 @@ export class GameScene extends Phaser.Scene {
       // Portrait: long axis = Y. P1 at bottom (high y), P2 at top (low y).
       // sy maps ARENA.WIDTH (800) → sceneH
       const centerY = this.sceneH / 2;
-      const topEndY = ARENA.LEFT_ENDZONE_END * this.sy;          // P2 endzone bottom edge
-      const bottomEndY = ARENA.RIGHT_ENDZONE_START * this.sy;    // P1 endzone top edge
+      const topEndY = ARENA.LEFT_ENDZONE_END * this.sy; // P2 endzone bottom edge
+      const bottomEndY = ARENA.RIGHT_ENDZONE_START * this.sy; // P1 endzone top edge
 
       for (const [id, body] of this.localBodies) {
         const obj = this.ballObjects.get(id);
@@ -845,7 +920,9 @@ export class GameScene extends Phaser.Scene {
         const pastCenter =
           owner === 1 ? body.position.y < centerY : body.position.y > centerY;
         const inOpponentEndzone =
-          owner === 1 ? body.position.y < topEndY : body.position.y > bottomEndY;
+          owner === 1
+            ? body.position.y < topEndY
+            : body.position.y > bottomEndY;
         const isScoring = pastCenter && !inOpponentEndzone;
         if (isScoring) {
           if (owner === 1) p1Score++;
@@ -901,11 +978,17 @@ export class GameScene extends Phaser.Scene {
       if (this.portrait) {
         const topEndY = ARENA.LEFT_ENDZONE_END * this.sy;
         const bottomEndY = ARENA.RIGHT_ENDZONE_START * this.sy;
-        inOpponentEndzone = owner === 1 ? body.position.y < topEndY : body.position.y > bottomEndY;
+        inOpponentEndzone =
+          owner === 1
+            ? body.position.y < topEndY
+            : body.position.y > bottomEndY;
       } else {
         const leftEndX = ARENA.LEFT_ENDZONE_END * this.sx;
         const rightEndX = ARENA.RIGHT_ENDZONE_START * this.sx;
-        inOpponentEndzone = owner === 1 ? body.position.x > rightEndX : body.position.x < leftEndX;
+        inOpponentEndzone =
+          owner === 1
+            ? body.position.x > rightEndX
+            : body.position.x < leftEndX;
       }
       if (inOpponentEndzone) {
         toCapture.push({ id, capturer: owner === 1 ? 2 : 1 });
@@ -919,7 +1002,8 @@ export class GameScene extends Phaser.Scene {
     if (!this.localTurnBallId) {
       // Check if we should finalise (no current turn ball; all others at rest)
       const allAtRest = [...this.localBodies.values()].every(
-        (b) => Math.hypot(b.velocity.x, b.velocity.y) < PHYSICS.REST_SPEED_THRESHOLD,
+        (b) =>
+          Math.hypot(b.velocity.x, b.velocity.y) < PHYSICS.REST_SPEED_THRESHOLD,
       );
       if (allAtRest) {
         this.localRestTicks++;
@@ -946,7 +1030,8 @@ export class GameScene extends Phaser.Scene {
 
     // Wait for ALL balls to settle before ending the turn
     const allAtRest = [...this.localBodies.values()].every(
-      (b) => Math.hypot(b.velocity.x, b.velocity.y) < PHYSICS.REST_SPEED_THRESHOLD,
+      (b) =>
+        Math.hypot(b.velocity.x, b.velocity.y) < PHYSICS.REST_SPEED_THRESHOLD,
     );
     if (allAtRest) {
       this.localRestTicks++;
@@ -957,7 +1042,6 @@ export class GameScene extends Phaser.Scene {
       this.localRestTicks = 0;
     }
   }
-
 
   /** Ball rested in opponent's endzone — captured, added to opponent's roster. */
   private localCaptureByEndzone(id: string, capturer: 1 | 2): void {
@@ -1020,6 +1104,7 @@ export class GameScene extends Phaser.Scene {
     winner: 1 | 2,
     score: { p1: number; p2: number },
   ): void {
+    const dpr = Math.min(window.devicePixelRatio || 1, 3);
     const overlay = this.add
       .rectangle(
         this.sceneW / 2,
@@ -1042,7 +1127,8 @@ export class GameScene extends Phaser.Scene {
         strokeThickness: 4,
       })
       .setOrigin(0.5)
-      .setDepth(31);
+      .setDepth(31)
+      .setResolution(dpr);
 
     this.add
       .text(
@@ -1052,7 +1138,8 @@ export class GameScene extends Phaser.Scene {
         { fontSize: "18px", color: "#ffffff", fontFamily: "Arial" },
       )
       .setOrigin(0.5)
-      .setDepth(31);
+      .setDepth(31)
+      .setResolution(dpr);
 
     this.add
       .text(this.sceneW / 2, this.sceneH / 2 + 80, "Back to Menu", {
@@ -1064,6 +1151,7 @@ export class GameScene extends Phaser.Scene {
       })
       .setOrigin(0.5)
       .setDepth(31)
+      .setResolution(dpr)
       .setInteractive({ useHandCursor: true })
       .on("pointerdown", () => this.scene.start("MenuScene"));
   }
@@ -1080,7 +1168,8 @@ export class GameScene extends Phaser.Scene {
       this.hidePreviewBall();
       // No balls — skip turn after brief delay
       this.time.delayedCall(800, () => {
-        if (this.localPhase !== "p1Turn" && this.localPhase !== "p2Turn") return;
+        if (this.localPhase !== "p1Turn" && this.localPhase !== "p2Turn")
+          return;
         this.showToast(`Player ${this.localCurrentPlayer} has no balls!`);
         this.localAdvanceTurn();
       });
@@ -1090,6 +1179,7 @@ export class GameScene extends Phaser.Scene {
   // ─── Toast / Game Over ─────────────────────────────────────────────────────
 
   private showToast(msg: string): void {
+    const dpr = Math.min(window.devicePixelRatio || 1, 3);
     const t = this.add
       .text(this.sceneW / 2, this.sceneH * 0.4, msg, {
         fontSize: "20px",
@@ -1101,7 +1191,8 @@ export class GameScene extends Phaser.Scene {
         padding: { x: 12, y: 6 },
       })
       .setOrigin(0.5)
-      .setDepth(20);
+      .setDepth(20)
+      .setResolution(dpr);
 
     this.tweens.add({
       targets: t,
@@ -1114,6 +1205,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private showGameOver(won: boolean, score: { p1: number; p2: number }): void {
+    const dpr = Math.min(window.devicePixelRatio || 1, 3);
     const overlay = this.add
       .rectangle(
         this.sceneW / 2,
@@ -1140,7 +1232,8 @@ export class GameScene extends Phaser.Scene {
         },
       )
       .setOrigin(0.5)
-      .setDepth(31);
+      .setDepth(31)
+      .setResolution(dpr);
 
     this.add
       .text(
@@ -1150,7 +1243,8 @@ export class GameScene extends Phaser.Scene {
         { fontSize: "18px", color: "#ffffff", fontFamily: "Arial" },
       )
       .setOrigin(0.5)
-      .setDepth(31);
+      .setDepth(31)
+      .setResolution(dpr);
 
     const menuBtn = this.add
       .text(this.sceneW / 2, this.sceneH / 2 + 80, "Back to Menu", {
@@ -1162,6 +1256,7 @@ export class GameScene extends Phaser.Scene {
       })
       .setOrigin(0.5)
       .setDepth(31)
+      .setResolution(dpr)
       .setInteractive({ useHandCursor: true });
 
     menuBtn.on("pointerdown", () => {

@@ -1,19 +1,31 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover, user-scalable=no"
+    />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="black-translucent"
+    />
     <meta name="theme-color" content="#1a1a2e" />
     <link rel="icon" href="/favicon.ico" sizes="48x48" />
     <link rel="icon" href="/icon.svg" sizes="any" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/apple-touch-icon-180x180.png" />
     <title>PinBuddys</title>
     <style>
-      * { margin: 0; padding: 0; box-sizing: border-box; }
-      html, body {
-        width: 100%; height: 100%;
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 100%;
+        height: 100%;
         background: #1a1a2e;
         overflow: hidden;
         touch-action: none;
@@ -23,8 +35,17 @@
         inset: 0;
         overflow: hidden;
       }
+      #game-container canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+        image-rendering: auto;
+        image-rendering: smooth;
+      }
       /* Suppress Phaser's built-in orientation-lock warning overlay */
-      .phaser-rotate-device { display: none !important; }
+      .phaser-rotate-device {
+        display: none !important;
+      }
     </style>
   </head>
   <body>

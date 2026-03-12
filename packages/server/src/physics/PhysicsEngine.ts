@@ -50,10 +50,22 @@ export class PhysicsEngine {
 
     // Top wall, bottom wall, left wall, right wall (static bodies)
     const walls = [
-      Bodies.rectangle(W / 2, -T / 2, W + T * 2, T, { isStatic: true, label: "wallTop" }),
-      Bodies.rectangle(W / 2, H + T / 2, W + T * 2, T, { isStatic: true, label: "wallBottom" }),
-      Bodies.rectangle(-T / 2, H / 2, T, H + T * 2, { isStatic: true, label: "wallLeft" }),
-      Bodies.rectangle(W + T / 2, H / 2, T, H + T * 2, { isStatic: true, label: "wallRight" }),
+      Bodies.rectangle(W / 2, -T / 2, W + T * 2, T, {
+        isStatic: true,
+        label: "wallTop",
+      }),
+      Bodies.rectangle(W / 2, H + T / 2, W + T * 2, T, {
+        isStatic: true,
+        label: "wallBottom",
+      }),
+      Bodies.rectangle(-T / 2, H / 2, T, H + T * 2, {
+        isStatic: true,
+        label: "wallLeft",
+      }),
+      Bodies.rectangle(W + T / 2, H / 2, T, H + T * 2, {
+        isStatic: true,
+        label: "wallRight",
+      }),
     ];
     World.add(this.world, walls);
   }
@@ -156,7 +168,10 @@ export class PhysicsEngine {
   /** Returns true when every tracked ball is below the rest speed threshold. */
   areAllBallsAtRest(): boolean {
     for (const body of this.bodies.values()) {
-      if (Math.hypot(body.velocity.x, body.velocity.y) >= PHYSICS.REST_SPEED_THRESHOLD) {
+      if (
+        Math.hypot(body.velocity.x, body.velocity.y) >=
+        PHYSICS.REST_SPEED_THRESHOLD
+      ) {
         return false;
       }
     }
@@ -169,11 +184,16 @@ export class PhysicsEngine {
     return { x: body.position.x, y: body.position.y };
   }
 
-  isBallOutOfBounds(id: string): { oob: boolean; side: "left" | "right" | null } {
+  isBallOutOfBounds(id: string): {
+    oob: boolean;
+    side: "left" | "right" | null;
+  } {
     const body = this.bodies.get(id);
     if (!body) return { oob: false, side: null };
-    if (body.position.x < ARENA.LEFT_BOUNDARY) return { oob: true, side: "left" };
-    if (body.position.x > ARENA.RIGHT_BOUNDARY) return { oob: true, side: "right" };
+    if (body.position.x < ARENA.LEFT_BOUNDARY)
+      return { oob: true, side: "left" };
+    if (body.position.x > ARENA.RIGHT_BOUNDARY)
+      return { oob: true, side: "right" };
     return { oob: false, side: null };
   }
 

@@ -13,13 +13,18 @@ export class BootScene extends Phaser.Scene {
   preload(): void {
     // Loading bar
     const { width, height } = this.scale;
+    const dpr = Math.min(window.devicePixelRatio || 1, 3);
     const barW = 300;
     const barH = 20;
     const barX = (width - barW) / 2;
     const barY = height / 2;
 
-    const bg = this.add.rectangle(barX, barY, barW, barH, 0x333355).setOrigin(0, 0);
-    const fill = this.add.rectangle(barX, barY, 0, barH, 0x4cc9f0).setOrigin(0, 0);
+    const bg = this.add
+      .rectangle(barX, barY, barW, barH, 0x333355)
+      .setOrigin(0, 0);
+    const fill = this.add
+      .rectangle(barX, barY, 0, barH, 0x4cc9f0)
+      .setOrigin(0, 0);
 
     this.load.on("progress", (value: number) => {
       fill.width = barW * value;
@@ -31,7 +36,8 @@ export class BootScene extends Phaser.Scene {
         color: "#ffffff",
         fontFamily: "Arial",
       })
-      .setOrigin(0.5);
+      .setOrigin(0.5)
+      .setResolution(dpr);
 
     // --- Placeholder asset generation ---
     // In production replace these with actual texture atlases / spritesheets.
